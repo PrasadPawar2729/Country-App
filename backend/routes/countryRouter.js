@@ -1,16 +1,40 @@
 const express = require('express');
 const countryRouter = express.Router();
 const axios = require('axios'); 
+const { auth } = require('../middleware/auth');
 
-
-countryRouter.get('/:currencyCode', async (req, res) => {
-    const { currencyCode } = req.params;
+countryRouter.get('/:currencyCode',auth, async (req, res) => {
     try {
-        const response = await axios.get(`https://restcountries.com/v3.1/currency/${currencyCode}`);
-        res.json(response.data);
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server error');
+      const currencyCode = req.params.currencyCode.toUpperCase(); // Ensure uppercase
+      const countries = await CountryModel.find({ currency: currencyCode });
+  
+      if (countries.length === 0) {
+        // If no matches found, fetch from external API
+        const apiUrl = `https://restcountries.com/v3.1/currency/${currencyCode}`;
+        const apiResponse = await axios.get(apiUrl);
+        const apiData = apiResponse.data;
+  
+        if (apiData.length > 0) {
+          // Save new country to database
+          const newCountry = new CountryModel({
+            name: apiData[0].name.common,
+            capital: apiData[0].capital[0],
+            currency: currencyCode,
+            languages: Object.values(apiData[0].languages),
+            flag: `https://flagsapi.com/${currencyCode}/shiny/64.png`, // Assuming you have a flag API
+          });
+          await newCountry.save();
+          res.status(200).json(newCountry);
+        } else {
+          res.status(404).json({ message: 'Country not found' });
+        }
+      } else {
+        res.status(200).json(countries);
+      }
+    } catch (error) {
+      // console.error(error);
+      res.status(500).json({ error:error, message: 'Failed to retrieve countries' });
     }
-});
+  });
+  
 module.exports = {countryRouter};
